@@ -25,7 +25,7 @@ BOARD_SIZE = 8
 # Number of cells in each plane; fixed number
 PLANE_SIZE = 8
 
-MAX_STEPS_PER_EPISODE = BOARD_SIZE**2
+MAX_STEPS_PER_EPISODE = BOARD_SIZE ** 2
 
 # Plane direction
 PLANE_HEADING_RIGHT = 0
@@ -56,7 +56,7 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
     """PlaneStrike environment for TF Agents."""
 
     def __init__(
-        self, board_size=BOARD_SIZE, discount=0.9, max_steps=MAX_STEPS_PER_EPISODE
+            self, board_size=BOARD_SIZE, discount=0.9, max_steps=MAX_STEPS_PER_EPISODE
     ) -> None:
         super(PlaneStrikePyEnvironment, self).__init__()
         assert board_size >= 4
@@ -66,7 +66,7 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
         self._max_steps = max_steps
         self._episode_ended = False
         self._action_spec = array_spec.BoundedArraySpec(
-            (), np.int32, minimum=0, maximum=self._board_size**2 - 1
+            (), np.int32, minimum=0, maximum=self._board_size ** 2 - 1
         )
         self._observation_spec = array_spec.BoundedArraySpec(
             (self._board_size, self._board_size),
@@ -102,13 +102,13 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
             # Populate the tail
             hidden_board[plane_core_row][
                 plane_core_column - 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row - 1][
                 plane_core_column - 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row + 1][
                 plane_core_column - 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
         elif plane_orientation == PLANE_HEADING_UP:
             plane_core_row = random.randint(1, board_size - 3)
             plane_core_column = random.randint(1, board_size - 3)
@@ -118,23 +118,23 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
             ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row + 2][
                 plane_core_column + 1
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row + 2][
                 plane_core_column - 1
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
         elif plane_orientation == PLANE_HEADING_LEFT:
             plane_core_row = random.randint(1, board_size - 2)
             plane_core_column = random.randint(1, board_size - 3)
             # Populate the tail
             hidden_board[plane_core_row][
                 plane_core_column + 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row - 1][
                 plane_core_column + 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row + 1][
                 plane_core_column + 2
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
         elif plane_orientation == PLANE_HEADING_DOWN:
             plane_core_row = random.randint(2, board_size - 2)
             plane_core_column = random.randint(1, board_size - 2)
@@ -144,10 +144,10 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
             ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row - 2][
                 plane_core_column + 1
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
             hidden_board[plane_core_row - 2][
                 plane_core_column - 1
-            ] = HIDDEN_BOARD_CELL_OCCUPIED
+                ] = HIDDEN_BOARD_CELL_OCCUPIED
 
         # Populate the cross
         hidden_board[plane_core_row][plane_core_column] = HIDDEN_BOARD_CELL_OCCUPIED
@@ -186,7 +186,61 @@ class PlaneStrikePyEnvironment(py_environment.PyEnvironment):
     def _step(self, action):
         """Apply action and return new time_step."""
         # TODO: add code to apply action and return new time_step
+        if self._hit_count == self._plane_size:
+            self._episode_ended = True
+            return self._reset()
 
+        if self._strike_count + 1 == self._max_steps:
+            self._reset()
+            return ts.termination(
+                np.array(self._visible_board, dtype=np.float32), UNFINISHED_GAME_REWARD
+            )
+
+        self._strike_count += 1
+
+        action_x = action // self._board_size
+        action_y = action % self._board_size
+
+        # Hit
+        if self._hidden_board[action_x][action_y] == HIDDEN_BOARD_CELL_OCCUPIED:
+            # Non-repeat move
+            if self._visible_board[action_x][action_y] == VISIBLE_BOARD_CELL_UNTRIED:
+                self._hit_count += 1
+                self._visible_board[action_x][action_y] = VISIBLE_BOARD_CELL_HIT
+
+                # Successful strike
+                if self._hit_count == self._plane_size:
+                    # Game finished
+                    self._episode_ended = True
+                    return ts.termination(
+                        np.array(self._visible_board, dtype=np.float32),
+                        FINISHED_GAME_REWARD
+                    )
+                else:
+                    self._episode_ended = False
+                    return ts.transition(
+                        np.array(self._visible_board, dtype=np.float32),
+                        HIT_REWARD,
+                        self._discount
+                    )
+            # Repeat strike
+            else:
+                self._episode_ended = False
+                return ts.transition(
+                    np.array(self._visible_board, dtype=np.float32),
+                    REPEAT_STRIKE_REWARD,
+                    self._discount
+                )
+        # Miss
+        else:
+            # Unsuccessful strike
+            self._episode_ended = False
+            self._visible_board[action_x][action_y] = VISIBLE_BOARD_CELL_MISS
+            return ts.transition(
+                np.array(self._visible_board, dtype=np.float32),
+                MISS_REWARD,
+                self._discount
+            )
 
     def render(self, mode: "human") -> np.ndarray:
         if mode != "human":
