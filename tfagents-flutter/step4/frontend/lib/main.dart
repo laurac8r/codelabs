@@ -297,6 +297,24 @@ class _PlaneStrikeState extends State<PlaneStrike>
     }
 
     // TODO: add code for the agent to take an action
+    int agentAction =
+    await _policyGradientAgent.predict(_playerVisibleBoardState);
+    _agentActionX = agentAction ~/ _boardSize;
+    _agentActionY = agentAction % _boardSize;
+    if (_playerHiddenBoardState[_agentActionX][_agentActionY] ==
+        hiddenBoardCellOccupied) {
+      // Non-repeat move
+      if (_playerVisibleBoardState[_agentActionX][_agentActionY] ==
+          visibleBoardCellUntried) {
+        _agentHitCount++;
+      }
+      _playerVisibleBoardState[_agentActionX][_agentActionY] =
+          visibleBoardCellHit;
+    } else {
+      _playerVisibleBoardState[_agentActionX][_agentActionY] =
+          visibleBoardCellMiss;
+    }
+    setState(() {});
 
     String userPrompt = '';
     if (_playerHitCount == _planePieceCount &&
