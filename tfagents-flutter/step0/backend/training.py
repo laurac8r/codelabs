@@ -88,10 +88,39 @@ def train_agent(iterations, modeldir, logdir, policydir):
     """Train and convert the model using TF Agents."""
 
     # TODO: add code to instantiate the training and evaluation environments
+    train_py_env = planestrike_py_environment.PlaneStrikePyEnvironment(
+        board_size=BOARD_SIZE, discount=DISCOUNT, max_steps=BOARD_SIZE ** 2
+    )
+    eval_py_env = planestrike_py_environment.PlaneStrikePyEnvironment(
+        board_size=BOARD_SIZE, discount=DISCOUNT, max_steps=BOARD_SIZE ** 2
+    )
 
+    train_env = tf_py_environment.TFPyEnvironment(train_py_env)
+    eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
     # TODO: add code to create a reinforcement learning agent that is going to be trained
+    actor_net = tfa.networks.Sequential(
+        [
+            tfa.keras_layers.InnerReshape([BOARD_SIZE, BOARD_SIZE], [BOARD_SIZE ** 2]),
+            tf.keras.layers.Dense(FC_LAYER_PARAMS, activation='relu'),
+            tf.keras.layers.Dense(BOARD_SIZE ** 2),
+            tf.keras.layers.Lambda(lambda t: tfp.distributions.Categorical(logits=t))
+        ],
+        input_spec=train_py_env.observation_spec(),
+    )
 
+    optimizer = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+
+    train_step_counter = tf.Variable(0)
+
+    tf_agent = reinforce_agent.ReinforceAgent(
+        train_env.time_step_spec(),
+        train_env.action_spec(),
+        actor_network=actor_net,
+        optimizer=optimizer,
+        normalize_returns=True,
+        train_step_counter=train_step_counter,
+    )
 
     tf_agent.initialize()
 
@@ -136,7 +165,19 @@ def train_agent(iterations, modeldir, logdir, policydir):
 
     for i in range(iterations):
         # TODO: add code to collect game episodes and train the agent
+        # Collect a few episodes using collect_policy and save to the replay buffer.
+        collect_episode(
+            train_py_env,
+            collect_policy,
+            COLLECT_EPISODES_PER_ITERATION,
+            replay_buffer_observer,
+        )
 
+        # Use data from the buffer and update the agent's network.
+        iterator = iter(replay_buffer.as_dataset(sample_batch_size=1))
+        trajectories, _ = next(iterator)
+        tf_agent.train(experience=trajectories)
+        replay_buffer.clear()
 
         logger = tf.get_logger()
         if i % EVAL_INTERVAL == 0:
