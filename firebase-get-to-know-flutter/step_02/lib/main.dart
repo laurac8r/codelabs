@@ -27,8 +27,8 @@ class App extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
         visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: const HomePage(),
+    ),
+    home: const HomePage(),
     );
   }
 }
